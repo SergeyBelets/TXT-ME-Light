@@ -22,7 +22,7 @@ export function set401Handler(fn) { _on401 = fn; }
  * @param {boolean} [requiresAuth=false]
  * @returns {Promise<any>}
  */
-async function request(method, path, body = null, requiresAuth = false) {
+async function request(method, path, body = null, requiresAuth = false, retries = 2) {
   const headers = { 'Content-Type': 'application/json' };
 
   if (requiresAuth) {
@@ -37,15 +37,26 @@ async function request(method, path, body = null, requiresAuth = false) {
   try {
     response = await fetch(BASE_URL + path, init);
   } catch (err) {
-    // Сетевая ошибка (offline, DNS и т.п.)
+    // Сетевая ошибка (offline, DNS, ПВО) — ретрай
+    if (retries > 0) {
+      console.warn(`[api] Сетевая ошибка, ретрай через 2с... (осталось: ${retries})`);
+      await new Promise(r => setTimeout(r, 2000));
+      return request(method, path, body, requiresAuth, retries - 1);
+    }
     throw Object.assign(new Error('Сетевая ошибка. Проверьте подключение.'), { status: 0 });
+  }
+
+  // Cold start Lambda или таймаут API Gateway
+  if (response.status === 504 && retries > 0) {
+    console.warn(`[api] 504 Gateway Timeout, ретрай через 1.5с... (осталось: ${retries})`);
+    await new Promise(r => setTimeout(r, 1500));
+    return request(method, path, body, requiresAuth, retries - 1);
   }
 
   if (response.status === 401) {
     storage.clear();
     if (_on401) _on401();
-    const err = Object.assign(new Error('Не авторизован'), { status: 401 });
-    throw err;
+    throw Object.assign(new Error('Не авторизован'), { status: 401 });
   }
 
   // Пустые ответы (204 No Content)
