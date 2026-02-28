@@ -1,4 +1,4 @@
-console.log('[post.js] v: 2026-02-27-v9');
+console.log('[post.js] v: 2026-02-28-v1');
 /**
  * views/post.js — страница отдельного поста с комментариями.
  *

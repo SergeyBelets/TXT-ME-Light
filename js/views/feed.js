@@ -42,8 +42,8 @@ export function mount(container, params) {
   const filters = {
     tag:    params.tag    ?? stored.tag    ?? null,
     author: params.author ?? stored.author ?? null,
-    since:  params.since  ?? stored.since  ?? null,
-    until:  params.until  ?? stored.until  ?? null,
+    since:  params.since  ?? null,
+    until:  params.until  ?? null,
     _tags:    stored._tags    ?? [],
     _authors: stored._authors ?? [],
   };

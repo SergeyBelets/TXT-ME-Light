@@ -65,10 +65,11 @@ export function getRoleDisplay(role) {
   return map[role] ?? role;
 }
 
-/** Удаляет # из начала тега для отображения. */
+/** Удаляет # из начала тега и приводит к нижнему регистру. */
 export function cleanTag(tag) {
   if (!tag) return '';
-  return tag.startsWith('#') ? tag.slice(1) : tag;
+  const t = tag.startsWith('#') ? tag.slice(1) : tag;
+  return t.toLowerCase();
 }
 
 /** Роли, которым разрешено писать посты. */

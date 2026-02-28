@@ -59,7 +59,8 @@ const postsModel = {
    * @returns {Promise<object>} созданный пост
    */
   async create(data) {
-    return postsAPI.create(data);
+    const res = await postsAPI.create(data);
+    return res?.post ?? res;
   },
 
   /**

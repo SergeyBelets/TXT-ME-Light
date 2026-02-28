@@ -33,48 +33,47 @@ async function request(method, path, body = null, requiresAuth = false, retries 
   const init = { method, headers };
   if (body !== null) init.body = JSON.stringify(body);
 
-  let response;
   try {
-    response = await fetch(BASE_URL + path, init);
-  } catch (err) {
-    // Сетевая ошибка (offline, DNS, ПВО) — ретрай
-    if (retries > 0) {
-      console.warn(`[api] Сетевая ошибка, ретрай через 2с... (осталось: ${retries})`);
-      await new Promise(r => setTimeout(r, 2000));
+    const response = await fetch(BASE_URL + path, init);
+
+    // Cold start Lambda / таймаут API Gateway
+    if (response.status === 504 && retries > 0) {
+      console.warn(`[api] 504 Gateway Timeout. Ретрай... Осталось: ${retries}`);
+      await new Promise(r => setTimeout(r, 500 + Math.random() * 1000));
       return request(method, path, body, requiresAuth, retries - 1);
     }
-    throw Object.assign(new Error('Сетевая ошибка. Проверьте подключение.'), { status: 0 });
+
+    if (response.status === 401) {
+      storage.clear();
+      if (_on401) _on401();
+      throw Object.assign(new Error('Не авторизован'), { status: 401, noRetry: true });
+    }
+
+    if (response.status === 204) return null;
+
+    let data;
+    try { data = await response.json(); } catch { data = null; }
+
+    if (!response.ok) {
+      const message = data?.message ?? data?.error ?? `Ошибка ${response.status}`;
+      throw Object.assign(new Error(message), { status: response.status, noRetry: true });
+    }
+
+    return data;
+
+  } catch (err) {
+    // Не ретраим намеренные ошибки (401, 4xx и т.п.)
+    if (err.noRetry) throw err;
+
+    // Сетевой сбой (интернет моргнул, ПВО) — ретрай
+    if (retries > 0 && (err.name === 'TypeError' || err.message?.includes('fetch'))) {
+      console.warn(`[api] Сетевой сбой. Ретрай... Осталось: ${retries}`);
+      await new Promise(r => setTimeout(r, 500 + Math.random() * 1000));
+      return request(method, path, body, requiresAuth, retries - 1);
+    }
+
+    throw err;
   }
-
-  // Cold start Lambda или таймаут API Gateway
-  if (response.status === 504 && retries > 0) {
-    console.warn(`[api] 504 Gateway Timeout, ретрай через 1.5с... (осталось: ${retries})`);
-    await new Promise(r => setTimeout(r, 1500));
-    return request(method, path, body, requiresAuth, retries - 1);
-  }
-
-  if (response.status === 401) {
-    storage.clear();
-    if (_on401) _on401();
-    throw Object.assign(new Error('Не авторизован'), { status: 401 });
-  }
-
-  // Пустые ответы (204 No Content)
-  if (response.status === 204) return null;
-
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    data = null;
-  }
-
-  if (!response.ok) {
-    const message = data?.message ?? data?.error ?? `Ошибка ${response.status}`;
-    throw Object.assign(new Error(message), { status: response.status, data });
-  }
-
-  return data;
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────

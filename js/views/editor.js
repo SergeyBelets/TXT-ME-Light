@@ -52,7 +52,7 @@ export function mount(container, { mode = 'create', postId = null }) {
     try {
       if (mode === 'create') {
         const post = await postsModel.create(values);
-        showToast('Запись опубликована', 'success');
+        console.log('[editor] create result:', JSON.stringify(post).slice(0, 200));
         router.push(`/posts/${post.postId}`);
       } else {
         await postsModel.update(postId, values);
