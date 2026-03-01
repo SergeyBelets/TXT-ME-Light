@@ -80,3 +80,14 @@ export function canPost(role) {
 export function isAdmin(role) {
   return ['NASTOIATEL', 'SMOTRITEL'].includes(role);
 }
+
+/** Названия уровней видимости. */
+export function getVisibilityLabel(level) {
+  const map = {
+    10: 'Комментаторам',
+    20: 'Авторам',
+    30: 'Смотрителям',
+    40: 'Настоятелям',
+  };
+  return map[level] ?? '';
+}

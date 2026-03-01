@@ -6,8 +6,7 @@ console.log('[api.js] v: 2026-02-27-v9');
  */
 
 import storage from './utils/storage.js';
-
-const BASE_URL = 'https://api.txt-me.club/prod';
+import { BASE_URL } from './config.js';
 
 // Глобальный обработчик 401 — устанавливается из auth.js
 let _on401 = null;
@@ -90,21 +89,27 @@ export const postsAPI = {
     const qs = new URLSearchParams(
       Object.fromEntries(Object.entries(params).filter(([, v]) => v != null))
     ).toString();
-    return request('GET', `/v2/posts${qs ? '?' + qs : ''}`);
+    return request('GET', `/v2/posts${qs ? '?' + qs : ''}`, null, true);
   },
 
   /** GET /posts/:id — API возвращает { post: {...} } */
   getById: async (postId) => {
-    const data = await request('GET', `/posts/${postId}`);
+    const data = await request('GET', `/posts/${postId}`, null, true);
     // Бэкенд может вернуть { post: {...} } или сам объект поста
     return data?.post ?? data;
   },
 
   /** POST /posts */
-  create: (data) => request('POST', '/posts', data, true),
+  create: async (data) => {
+    const res = await request('POST', '/posts', data, true);
+    return res?.post ?? res;
+  },
 
   /** PUT /posts/:id */
-  update: (postId, data) => request('PUT', `/posts/${postId}`, data, true),
+  update: async (postId, data) => {
+    const res = await request('PUT', `/posts/${postId}`, data, true);
+    return res?.post ?? res;
+  },
 
   /** DELETE /posts/:id */
   delete: (postId) => request('DELETE', `/posts/${postId}`, null, true),
@@ -116,7 +121,7 @@ export const commentsAPI = {
   /** GET /posts/:id/comments */
   getByPost: (postId) => {
     console.log('[commentsAPI] getByPost url:', `/posts/${postId}/comments`);
-    return request('GET', `/posts/${postId}/comments`);
+    return request('GET', `/posts/${postId}/comments`, null, true);
   },
 
   /** POST /posts/:id/comments */

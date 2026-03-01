@@ -15,7 +15,7 @@ import { createAvatarPicker } from '../components/avatar-picker.js';
 import { renderInto } from '../components/markdown.js';
 import { showToast } from '../components/toast.js';
 import { showConfirm } from '../components/modal.js';
-import { formatDate, formatRelative, getRoleDisplay, cleanTag, isAdmin } from '../utils/format.js';
+import { formatDate, formatRelative, getRoleDisplay, getVisibilityLabel, cleanTag, isAdmin } from '../utils/format.js';
 import { clearElement } from '../utils/dom.js';
 import { postsAPI } from '../api.js';
 
@@ -135,6 +135,14 @@ function _renderPost(wrapper, postId) {
   meta.appendChild(authorSpan);
   meta.appendChild(roleSpan);
   meta.appendChild(dateSpan);
+
+  if (post.visibilityLevel && post.visibilityLevel > 0) {
+    const badge = document.createElement('span');
+    badge.className = 'visibility-badge';
+    badge.textContent = getVisibilityLabel(post.visibilityLevel);
+    meta.appendChild(badge);
+  }
+
   headerRight.appendChild(titleEl);
   headerRight.appendChild(meta);
   header.appendChild(avatarEl);

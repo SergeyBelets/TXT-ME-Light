@@ -106,6 +106,53 @@ function _buildForm(card) {
   tagsGroup.appendChild(tagsInput);
   card.appendChild(tagsGroup);
 
+  // Уровень видимости
+  const visibilityGroup = document.createElement('div');
+  visibilityGroup.className = 'form-group';
+  const visibilityLabel = document.createElement('label');
+  visibilityLabel.textContent = 'Уровень видимости';
+  const visibilitySelect = document.createElement('select');
+  visibilitySelect.className = 'form-control';
+  visibilitySelect.style.cssText = 'width:100%;padding:0.75rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--input-background);color:var(--foreground)';
+  
+  const role = auth.getRole();
+  const options = [
+    { value: 0, label: 'Всем' },
+    { value: 10, label: 'Комментаторам', minRole: 'KOMMENTATOR' },
+    { value: 20, label: 'Авторам', minRole: 'AVTOR' },
+    { value: 30, label: 'Смотрителям', minRole: 'SMOTRITEL' },
+    { value: 40, label: 'Настоятелям', minRole: 'NASTOIATEL' }
+  ];
+
+  const roleRank = {
+    'ANONYM': 0,
+    'KOMMENTATOR': 10,
+    'AVTOR': 20,
+    'SMOTRITEL': 30,
+    'NASTOIATEL': 40
+  };
+
+  const currentRank = roleRank[role] || 0;
+
+  options.forEach(opt => {
+    const requiredRank = roleRank[opt.minRole] || 0;
+    if (currentRank >= requiredRank) {
+      const el = document.createElement('option');
+      el.value = opt.value;
+      el.textContent = opt.label;
+      visibilitySelect.appendChild(el);
+    }
+  });
+
+  const visibilityHelp = document.createElement('p');
+  visibilityHelp.style.cssText = 'font-size:0.75rem;color:var(--muted-foreground);margin-top:0.25rem';
+  visibilityHelp.textContent = 'Кто сможет увидеть этот пост.';
+
+  visibilityGroup.appendChild(visibilityLabel);
+  visibilityGroup.appendChild(visibilitySelect);
+  visibilityGroup.appendChild(visibilityHelp);
+  card.appendChild(visibilityGroup);
+
   // Аватар поста
   let postAvatarId = null;
   const avatarGroup = document.createElement('div');
@@ -161,6 +208,7 @@ function _buildForm(card) {
       tags:        rawTags,
       media:       mediaSection.getMedia(),
       postAvatarId: postAvatarId || null,
+      visibilityLevel: Number(visibilitySelect.value),
     };
   }
 
@@ -175,6 +223,10 @@ function _buildForm(card) {
     if (post.postAvatarId) {
       postAvatarId = post.postAvatarId;
       picker.setAvatarId(post.postAvatarId);
+    }
+
+    if (post.visibilityLevel !== undefined) {
+      visibilitySelect.value = post.visibilityLevel;
     }
 
     mediaSection.setMedia(post.media ?? []);

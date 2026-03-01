@@ -13,7 +13,7 @@ import { renderInto } from '../components/markdown.js';
 import { createPagination, updatePagination } from '../components/pagination.js';
 import { showToast } from '../components/toast.js';
 import { postsAPI } from '../api.js';
-import { formatRelative, cleanTag, getRoleDisplay } from '../utils/format.js';
+import { formatRelative, cleanTag, getRoleDisplay, getVisibilityLabel } from '../utils/format.js';
 import { clearElement } from '../utils/dom.js';
 
 export function mount(container, params) {
@@ -225,6 +225,13 @@ function _makePostCard(post) {
 
   card.querySelector('[data-slot="role"]').textContent = getRoleDisplay(post.authorRole);
   card.querySelector('[data-slot="date"]').textContent = formatRelative(post.createdAt);
+
+  if (post.visibilityLevel && post.visibilityLevel > 0) {
+    const badge = document.createElement('span');
+    badge.className = 'visibility-badge';
+    badge.textContent = getVisibilityLabel(post.visibilityLevel);
+    card.querySelector('.post-meta').appendChild(badge);
+  }
 
   renderInto(card.querySelector('[data-slot="content"]'), post.content);
 
