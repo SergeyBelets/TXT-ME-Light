@@ -153,6 +153,34 @@ function _buildForm(card) {
   visibilityGroup.appendChild(visibilityHelp);
   card.appendChild(visibilityGroup);
 
+  // Могут комментировать
+  const commentGroup = document.createElement('div');
+  commentGroup.className = 'form-group';
+  const commentLabel = document.createElement('label');
+  commentLabel.textContent = 'Могут комментировать';
+  const commentSelect = document.createElement('select');
+  commentSelect.className = 'form-control';
+  commentSelect.style.cssText = 'width:100%;padding:0.75rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--input-background);color:var(--foreground)';
+
+  const commentOptions = [
+    { value: 0, label: 'Все' },
+    { value: 20, label: 'Авторы', minRole: 'AVTOR' }
+  ];
+
+  commentOptions.forEach(opt => {
+    const requiredRank = roleRank[opt.minRole] || 0;
+    if (currentRank >= requiredRank) {
+      const el = document.createElement('option');
+      el.value = opt.value;
+      el.textContent = opt.label;
+      commentSelect.appendChild(el);
+    }
+  });
+
+  commentGroup.appendChild(commentLabel);
+  commentGroup.appendChild(commentSelect);
+  card.appendChild(commentGroup);
+
   // Аватар поста
   let postAvatarId = null;
   const avatarGroup = document.createElement('div');
@@ -209,6 +237,7 @@ function _buildForm(card) {
       media:       mediaSection.getMedia(),
       postAvatarId: postAvatarId || null,
       visibilityLevel: Number(visibilitySelect.value),
+      commentLevel: Number(commentSelect.value),
     };
   }
 
@@ -227,6 +256,9 @@ function _buildForm(card) {
 
     if (post.visibilityLevel !== undefined) {
       visibilitySelect.value = post.visibilityLevel;
+    }
+    if (post.commentLevel !== undefined) {
+      commentSelect.value = String(post.commentLevel);
     }
 
     mediaSection.setMedia(post.media ?? []);
