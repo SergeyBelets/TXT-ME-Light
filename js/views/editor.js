@@ -98,10 +98,10 @@ function _buildForm(card) {
   const tagsGroup = document.createElement('div');
   tagsGroup.className = 'form-group';
   const tagsLabel = document.createElement('label');
-  tagsLabel.textContent = 'Теги (через пробел или запятую, максимум 10)';
+  tagsLabel.textContent = 'Теги (через запятую, максимум 10)';
   const tagsInput = document.createElement('input');
   tagsInput.type        = 'text';
-  tagsInput.placeholder = 'программирование проза стихи';
+  tagsInput.placeholder = 'программирование, проза, блиц-30';
   tagsGroup.appendChild(tagsLabel);
   tagsGroup.appendChild(tagsInput);
   card.appendChild(tagsGroup);
@@ -149,7 +149,7 @@ function _buildForm(card) {
   // ── getValues ──
   function getValues() {
     const rawTags = tagsInput.value
-      .split(/[\s,]+/)
+      .split(/,+/)
       .map(t => t.trim())
       .filter(Boolean)
       .slice(0, 10)
@@ -169,7 +169,7 @@ function _buildForm(card) {
     titleInput.value = post.title ?? '';
     editorEl.setContent(post.content ?? '');
 
-    const tagStr = (post.tags ?? []).map(cleanTag).join(' ');
+    const tagStr = (post.tags ?? []).map(cleanTag).join(', ');
     tagsInput.value = tagStr;
 
     if (post.postAvatarId) {
@@ -300,10 +300,10 @@ function _buildMediaSection() {
 
   function _addMediaRow(list, item = null) {
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:0.5rem;align-items:center';
+    row.style.cssText = 'display:grid;grid-template-columns:160px 1fr auto;gap:0.5rem;align-items:center;width:100%';
 
     const typeSelect = document.createElement('select');
-    typeSelect.style.cssText = 'padding:0.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--input-background);min-height:44px';
+    typeSelect.style.cssText = 'padding:0.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--input-background);min-height:44px;width:100%';
     ['video', 'audio'].forEach(t => {
       const opt = document.createElement('option');
       opt.value = t;
@@ -314,8 +314,12 @@ function _buildMediaSection() {
 
     const urlInput = document.createElement('input');
     urlInput.type        = 'text';
+    urlInput.className   = 'media-url-input';
     urlInput.placeholder = 'URL…';
     urlInput.style.flex  = '1';
+    urlInput.style.pointerEvents = 'auto';
+    urlInput.style.userSelect = 'text';
+    urlInput.style.webkitUserSelect = 'text';
     urlInput.style.minHeight = '44px';
     if (item?.url) urlInput.value = item.url;
 

@@ -1,0 +1,140 @@
+/* ════════════════════════════════════════
+   КАЛЕНДАРЬ (сайдбар, только vanilla-фронтенд)
+   ════════════════════════════════════════ */
+
+.calendar-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+/* ── Ряд года ── */
+.calendar-year-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.calendar-nav-btn {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.calendar-nav-btn:hover {
+  background: var(--accent);
+}
+
+.calendar-year-label {
+  font-weight: var(--font-weight-medium);
+  font-size: 1rem;
+  min-width: 3.5rem;
+  text-align: center;
+}
+
+/* ── Ряд месяцев ── */
+.calendar-month-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+
+.calendar-month-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.35rem 0;
+  font-size: 0.75rem;
+  color: var(--foreground);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  min-height: 32px;
+}
+
+.calendar-month-btn:hover {
+  background: var(--accent);
+}
+
+.calendar-month-btn.active {
+  background: var(--blue);
+  color: #ffffff;
+  border-color: var(--blue);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ── Таблица дней ── */
+.calendar-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.calendar-table th {
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--muted-foreground);
+  padding-bottom: 0.4rem;
+  text-align: center;
+}
+
+.calendar-table td {
+  padding: 2px;
+  text-align: center;
+}
+
+.calendar-empty {
+  padding: 2px;
+}
+
+.calendar-day {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.calendar-day:hover {
+  background: var(--accent);
+}
+
+/* День, в котором есть записи — подчёркнут снизу фирменным синим */
+.calendar-day.has-posts {
+  font-weight: var(--font-weight-medium);
+  box-shadow: inset 0 -3px 0 var(--blue);
+}
+
+/* Сегодняшний день — контурная рамка */
+.calendar-day.today {
+  border-color: var(--blue);
+}
+
+/* Выбранный (активный фильтр) день — залит синим, как активная кнопка фильтра */
+.calendar-day.active {
+  background: var(--blue);
+  color: #ffffff;
+  box-shadow: none;
+  border-color: var(--blue);
+}

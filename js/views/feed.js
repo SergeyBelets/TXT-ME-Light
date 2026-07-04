@@ -1,4 +1,4 @@
-console.log('[feed.js] v: 2026-02-27-v9');
+console.log('[feed.js] v: 2026-07-04-v10');
 /**
  * views/feed.js — лента постов V2.
  */
@@ -13,7 +13,7 @@ import { renderInto } from '../components/markdown.js';
 import { createPagination, updatePagination } from '../components/pagination.js';
 import { showToast } from '../components/toast.js';
 import { postsAPI } from '../api.js';
-import { formatRelative, cleanTag, getRoleDisplay } from '../utils/format.js';
+import { formatRelative, cleanTag, getRoleDisplay, shiftDayKey } from '../utils/format.js';
 import { clearElement } from '../utils/dom.js';
 
 export function mount(container, params) {
@@ -42,8 +42,9 @@ export function mount(container, params) {
   const filters = {
     tag:    params.tag    ?? stored.tag    ?? null,
     author: params.author ?? stored.author ?? null,
-    since:  params.since  ?? null,
-    until:  params.until  ?? null,
+    since:  params.since  ?? stored.since  ?? null,
+    until:  params.until  ?? stored.until  ?? null,
+    day:    params.day    ?? stored.day    ?? null,
     _tags:    stored._tags    ?? [],
     _authors: stored._authors ?? [],
   };
@@ -93,20 +94,44 @@ export function mount(container, params) {
   _load(filters);
 
   function onPrev() {
+    const af = store.get('activeFilters');
+
+    // Режим календарного дня: листаем на предыдущий день независимо от того,
+    // есть там записи или нет.
+    if (af?.day) {
+      const newFilters = { ...af, day: shiftDayKey(af.day, -1) };
+      store.set('activeFilters', newFilters);
+      _load(newFilters);
+      _syncDayUrl(newFilters);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     const meta = store.get('pageMeta');
     if (!meta?.prevUntil) return;
-    const af = { ...store.get('activeFilters'), until: meta.prevUntil, since: null };
-    store.set('activeFilters', af);
-    _load(af);
+    const newFilters = { ...af, until: meta.prevUntil, since: null };
+    store.set('activeFilters', newFilters);
+    _load(newFilters);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function onNext() {
+    const af = store.get('activeFilters');
+
+    if (af?.day) {
+      const newFilters = { ...af, day: shiftDayKey(af.day, 1) };
+      store.set('activeFilters', newFilters);
+      _load(newFilters);
+      _syncDayUrl(newFilters);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     const meta = store.get('pageMeta');
     if (!meta?.nextSince) return;
-    const af = { ...store.get('activeFilters'), since: meta.nextSince, until: null };
-    store.set('activeFilters', af);
-    _load(af);
+    const newFilters = { ...af, since: meta.nextSince, until: null };
+    store.set('activeFilters', newFilters);
+    _load(newFilters);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -124,6 +149,25 @@ export function mount(container, params) {
 // ── Загрузка ─────────────────────────────────────────────────────────
 
 async function _load(filters) {
+  // ── Режим календарного дня: выдаём ВСЕ записи этого дня, без лимита обычной пагинации ──
+  // Бэкенд (CMS-Posts-ListV2) сам считает границы UTC-суток по параметру day —
+  // since/until здесь не участвуют (более того, они взаимоисключающие).
+  if (filters.day) {
+    store.set('loading', true);
+    store.set('error', null);
+    try {
+      const data = await _getDayWithRetry(filters.day);
+      store.set('posts', data?.items ?? []);
+      store.set('pageMeta', { prevUntil: null, nextSince: null });
+    } catch (err) {
+      store.set('error', err.message);
+      store.set('posts', []);
+    } finally {
+      store.set('loading', false);
+    }
+    return;
+  }
+
   const tags    = filters._tags    ?? (filters.tag    ? [filters.tag]    : []);
   const authors = filters._authors ?? (filters.author ? [filters.author] : []);
   const hasMultiple = tags.length > 1 || authors.length > 1;
@@ -190,6 +234,30 @@ function _applyUrlRewrite() {
   }
 }
 
+/** Синхронизирует URL при листании дней в режиме календаря. */
+function _syncDayUrl(filters) {
+  const p = new URLSearchParams();
+  if (filters.day) p.set('day', filters.day);
+  const qs = p.toString();
+  history.replaceState(null, '', '#/' + (qs ? '?' + qs : ''));
+}
+
+/**
+ * GET /v2/posts?day=... с ретраем на случай холодного старта Lambda/DynamoDB
+ * (единичный транзиентный сбой не должен показывать пустую ленту на весь день).
+ */
+async function _getDayWithRetry(day, attempt = 0) {
+  try {
+    return await postsAPI.getV2({ day, limit: 300 });
+  } catch (err) {
+    if (attempt < 2) {
+      await new Promise((r) => setTimeout(r, 400 + attempt * 400));
+      return _getDayWithRetry(day, attempt + 1);
+    }
+    throw err;
+  }
+}
+
 // ── Рендеринг ────────────────────────────────────────────────────────
 
 function _renderPosts(listEl, noPostsEl) {
@@ -219,15 +287,22 @@ function _makePostCard(post) {
   const authorEl = card.querySelector('[data-slot="author"]');
   authorEl.textContent = post.username;
   authorEl.addEventListener('click', () => {
-    store.set('activeFilters', { ...store.get('activeFilters'), author: post.username, tag: null, since: null, until: null });
+    store.set('activeFilters', { ...store.get('activeFilters'), author: post.username, tag: null, day: null, since: null, until: null });
     _load({ author: post.username });
   });
 
   card.querySelector('[data-slot="role"]').textContent = getRoleDisplay(post.authorRole);
   card.querySelector('[data-slot="date"]').textContent = formatRelative(post.createdAt);
 
-  renderInto(card.querySelector('[data-slot="content"]'), post.content);
+  renderInto(card.querySelector('[data-slot="content"]'), post.content, post.postId);
 
+  if (post.media?.length) {
+    const contentEl = card.querySelector('[data-slot="content"]');
+    const mediaWrap = document.createElement('div');
+    mediaWrap.style.marginTop = '1rem';
+    for (const m of post.media) mediaWrap.appendChild(_renderMediaCard(m));
+    contentEl.parentNode.appendChild(mediaWrap);
+  }
   const tagsEl = card.querySelector('[data-slot="tags"]');
   for (const tag of post.tags ?? []) {
     const tplTag = document.getElementById('tpl-tag-btn');
@@ -235,7 +310,7 @@ function _makePostCard(post) {
     const tagBtn = tplTag.content.cloneNode(true).querySelector('.post-tag');
     tagBtn.textContent = cleanTag(tag);
     tagBtn.addEventListener('click', () => {
-      store.set('activeFilters', { ...store.get('activeFilters'), tag, author: null, since: null, until: null });
+      store.set('activeFilters', { ...store.get('activeFilters'), tag, author: null, day: null, since: null, until: null });
       _load({ tag });
     });
     tagsEl.appendChild(tagBtn);
@@ -262,4 +337,54 @@ function _pluralComments(n) {
   if (mod === 1)             return 'комментарий';
   if (mod >= 2 && mod <= 4) return 'комментария';
   return 'комментариев';
+}
+
+// ── Медиа в карточке ленты ────────────────────────────────────────────
+
+function _renderMediaCard(m) {
+  const wrap = document.createElement('div');
+  wrap.style.marginBottom = '0.75rem';
+
+  if (m.type === 'video') {
+    if (/youtube\.com|youtu\.be|vimeo\.com/.test(m.url)) {
+      const iframe = document.createElement('iframe');
+      iframe.src    = _embedUrlCard(m.url);
+      iframe.width  = '100%';
+      iframe.height = '360';
+      iframe.style.border       = 'none';
+      iframe.style.borderRadius = 'var(--radius)';
+      iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+      iframe.setAttribute('allowfullscreen', '');
+      wrap.appendChild(iframe);
+    } else {
+      const video = document.createElement('video');
+      video.src      = m.url;
+      video.controls = true;
+      video.style.cssText = 'width:100%;border-radius:var(--radius)';
+      wrap.appendChild(video);
+    }
+  } else if (m.type === 'audio') {
+    const audio = document.createElement('audio');
+    audio.src      = m.url;
+    audio.controls = true;
+    audio.style.width = '100%';
+    wrap.appendChild(audio);
+  }
+  return wrap;
+}
+
+function _embedUrlCard(url) {
+  if (/youtube\.com\/watch/.test(url)) {
+    const id = new URL(url).searchParams.get('v');
+    return `https://www.youtube.com/embed/${id}`;
+  }
+  if (/youtu\.be\//.test(url)) {
+    const id = url.split('youtu.be/')[1]?.split('?')[0];
+    return `https://www.youtube.com/embed/${id}`;
+  }
+  if (/vimeo\.com\/(\d+)/.test(url)) {
+    const id = url.match(/vimeo\.com\/(\d+)/)?.[1];
+    return `https://player.vimeo.com/video/${id}`;
+  }
+  return url;
 }

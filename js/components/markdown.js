@@ -53,12 +53,50 @@ export function renderMarkdown(text) {
 }
 
 /**
+ * Посты, которые рендерятся как plain text (pre-wrap) без Markdown-парсинга.
+ * Добавлять сюда postId текстов, которые ломаются при MD-рендеринге.
+ */
+const PLAIN_TEXT_POSTS = new Set([
+  '8205bc8d-4910-4fd7-b62a-302cde4cc413', // Без горизонта
+  '835f89d8-681a-4d82-bfae-90d760256459', // Чайные ритуалы Третьей Стражи
+  '83db64fd-79c2-4bc0-b270-eb64d8f8675b', // Долгий холм
+  '77631afe-238f-4ac3-92c0-d783aa583f6c', // В синем
+  '8c426741-2f47-4d86-8da0-ee27835dff87', // Арктическая катавасия
+  '13ca22bc-8094-40d4-b849-0823457fa618', // зима
+]);
+
+/**
+ * Проверяет, нужен ли plain-text рендеринг для поста.
+ * @param {string|null} postId
+ * @returns {boolean}
+ */
+export function isPlainTextPost(postId) {
+  return postId ? PLAIN_TEXT_POSTS.has(postId) : false;
+}
+
+/**
  * Рендерит Markdown в DOM-элемент.
+ * Если передан postId из PLAIN_TEXT_POSTS — рендерит как pre-wrap без парсинга.
  * @param {Element} el
  * @param {string} text
+ * @param {string} [postId]
  */
-export function renderInto(el, text) {
-  el.innerHTML = renderMarkdown(text);
+export function renderInto(el, text, postId) {
+  // DEBUG — убрать после проверки
+  if (postId) console.log('[markdown] renderInto postId:', postId, 'isPlain:', PLAIN_TEXT_POSTS.has(postId));
+
+  // Очистка контента: удаляем ¬ и сокращаем множественные переводы строк
+  const clean = (text || '')
+    .replace(/¬/g, '')
+    .replace(/\n{3,}/g, '\n\n');
+
+  if (isPlainTextPost(postId)) {
+    el.textContent = clean;
+    el.style.whiteSpace = 'pre-wrap';
+    return;
+  }
+
+  el.innerHTML = renderMarkdown(clean);
 
   // Безопасность: все ссылки открываем в новой вкладке
   el.querySelectorAll('a').forEach(a => {

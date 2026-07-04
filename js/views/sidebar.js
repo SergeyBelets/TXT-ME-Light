@@ -1,8 +1,9 @@
-console.log('[sidebar.js] v: 2026-02-27-v9');
+console.log('[sidebar.js] v: 2026-07-04-v10');
 /**
  * views/sidebar.js — сайдбар.
  * Постоянный DOM-элемент, создаётся один раз, переставляется в layout.
  * Обновляется при изменении авторизации и фильтров.
+ * В самом низу — постоянный календарь (только vanilla-фронтенд).
  */
 
 import auth from '../auth.js';
@@ -10,6 +11,7 @@ import store from '../store.js';
 import metaModel from '../models/meta.js';
 import router from '../router.js';
 import { createAvatar } from '../components/avatar.js';
+import { createCalendar } from '../components/calendar.js';
 import { getRoleDisplay, canPost, cleanTag } from '../utils/format.js';
 import { clearElement } from '../utils/dom.js';
 
@@ -18,6 +20,7 @@ import { clearElement } from '../utils/dom.js';
 
 let _sidebarEl = null;
 let _initialized = false;
+let _calendarEl = null;
 
 /**
  * Получить (или создать) постоянный DOM-элемент сайдбара.
@@ -30,6 +33,38 @@ export function getSidebarEl() {
     _sidebarEl.className = 'sidebar';
   }
   return _sidebarEl;
+}
+
+/**
+ * Получить (или создать) постоянный элемент календаря.
+ * Создаётся один раз, чтобы выбранные год/месяц не сбрасывались
+ * при полном перерендере сайдбара (например, при auth:changed).
+ * @returns {HTMLElement}
+ */
+function _getCalendarEl() {
+  if (!_calendarEl) {
+    _calendarEl = createCalendar({ onSelectDay: _handleDaySelect });
+  }
+  return _calendarEl;
+}
+
+/**
+ * Клик по дню в календаре — фильтр ленты по дате создания записи.
+ * Повторный клик по уже выбранному дню снимает фильтр (как и с тегами/авторами).
+ * Выбор дня — самостоятельный фильтр: сбрасывает тег/автора, чтобы
+ * пользователь всегда видел «всё за этот день», без неожиданных пустых лент.
+ * @param {string} dayKeyStr 'YYYY-MM-DD'
+ */
+function _handleDaySelect(dayKeyStr) {
+  const active = store.get('activeFilters') ?? {};
+  const isSame = active.day === dayKeyStr;
+
+  const newFilters = isSame
+    ? { tag: null, author: null, day: null, since: null, until: null, _tags: [], _authors: [] }
+    : { tag: null, author: null, day: dayKeyStr, since: null, until: null, _tags: [], _authors: [] };
+
+  store.set('activeFilters', newFilters);
+  router.replace(isSame ? '/' : '/?day=' + encodeURIComponent(dayKeyStr));
 }
 
 /**
@@ -69,6 +104,9 @@ function _render(sidebar) {
   sidebar.appendChild(clubBlock);
 
   _renderFilters(sidebar);
+
+  // Календарь — всегда в самом низу сайдбара
+  sidebar.appendChild(_getCalendarEl());
 
   // Переставить кнопку тоггла (она снаружи sidebar)
   _remountToggle(sidebar);
@@ -221,7 +259,8 @@ function _renderFilters(sidebar) {
 
       btn.addEventListener('click', () => {
         const isActive = active.tag === tag;
-        const newFilters = { ...active, tag: isActive ? null : tag, since: null, until: null };
+        // Выбор тега — выход из режима календарного дня.
+        const newFilters = { ...active, tag: isActive ? null : tag, day: null, since: null, until: null };
         store.set('activeFilters', newFilters);
         const params = new URLSearchParams();
         if (newFilters.tag)    params.set('tag',    newFilters.tag);
@@ -253,7 +292,8 @@ function _renderFilters(sidebar) {
 
       btn.addEventListener('click', () => {
         const isActive = active.author === author;
-        const newFilters = { ...active, author: isActive ? null : author, since: null, until: null };
+        // Выбор автора — выход из режима календарного дня.
+        const newFilters = { ...active, author: isActive ? null : author, day: null, since: null, until: null };
         store.set('activeFilters', newFilters);
         const params = new URLSearchParams();
         if (newFilters.tag)    params.set('tag',    newFilters.tag);
@@ -279,7 +319,14 @@ function _renderFilters(sidebar) {
     section.appendChild(resetBtn);
   }
 
-  sidebar.appendChild(section);
+  // Вставляем секцию фильтров НАД календарём, а не в конец сайдбара —
+  // календарь должен всегда оставаться самым нижним блоком.
+  const calEl = sidebar.querySelector('.calendar-section');
+  if (calEl) {
+    sidebar.insertBefore(section, calEl);
+  } else {
+    sidebar.appendChild(section);
+  }
 }
 
 // ── Мобильный тоггл ───────────────────────────────────────────────────

@@ -13,6 +13,30 @@ const BASE_URL = 'https://api.txt-me.club/prod';
 let _on401 = null;
 export function set401Handler(fn) { _on401 = fn; }
 
+// Очередь ожидающих повтора после реавторизации
+let _reauthPromise = null;
+
+/**
+ * Ждём реавторизации. Если уже ждём — присоединяемся к той же очереди.
+ * Resolve вызывается из app.js после успешного логина через auth:reauth-done.
+ */
+function _waitForReauth() {
+  if (!_reauthPromise) {
+    _reauthPromise = new Promise((resolve, reject) => {
+      function onDone()   { cleanup(); resolve(); }
+      function onCancel() { cleanup(); reject(Object.assign(new Error('Авторизация отменена'), { status: 401, noRetry: true })); }
+      function cleanup()  {
+        _reauthPromise = null;
+        document.removeEventListener('auth:reauth-done',   onDone);
+        document.removeEventListener('auth:reauth-cancel', onCancel);
+      }
+      document.addEventListener('auth:reauth-done',   onDone,   { once: true });
+      document.addEventListener('auth:reauth-cancel', onCancel, { once: true });
+    });
+  }
+  return _reauthPromise;
+}
+
 // ── Базовый запрос ────────────────────────────────────────────────────
 
 /**
@@ -44,9 +68,15 @@ async function request(method, path, body = null, requiresAuth = false, retries 
     }
 
     if (response.status === 401) {
-      storage.clear();
       if (_on401) _on401();
-      throw Object.assign(new Error('Не авторизован'), { status: 401, noRetry: true });
+      // Ждём пока пользователь войдёт заново, потом повторяем запрос
+      try {
+        await _waitForReauth();
+        return request(method, path, body, requiresAuth, 0); // повтор без доп. ретраев
+      } catch (reauthErr) {
+        storage.clear();
+        throw reauthErr;
+      }
     }
 
     if (response.status === 204) return null;

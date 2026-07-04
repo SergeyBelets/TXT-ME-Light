@@ -145,7 +145,7 @@ function _renderPost(wrapper, postId) {
   contentWrap.className = 'post-content-full';
   const contentEl = document.createElement('div');
   contentEl.className = 'markdown-content';
-  renderInto(contentEl, post.content);
+  renderInto(contentEl, post.content, post.postId);
   contentWrap.appendChild(contentEl);
 
   // Медиа
@@ -259,6 +259,10 @@ function _renderMedia(m) {
       iframe.style.border    = 'none';
       iframe.style.borderRadius = 'var(--radius)';
       iframe.allowFullscreen = true;
+      iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+      iframe.setAttribute('allowfullscreen', '');
+      iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+      iframe.setAttribute('allowfullscreen', '');
       wrap.appendChild(iframe);
     } else {
       const video = document.createElement('video');

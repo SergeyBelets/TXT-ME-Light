@@ -1,7 +1,11 @@
 /**
- * pagination.js — компонент пагинации (курсорная).
+ * pagination.js — компонент пагинации (курсорная + режим календарного дня).
  * Рендерит кнопки «← Предыдущие» / «Следующие →» и активные фильтры.
  * Используется дважды: вверху и внизу ленты.
+ *
+ * В режиме календарного дня (activeFilters.day задан) кнопки перелистывания
+ * всегда доступны и ведут на предыдущий/следующий календарный день —
+ * независимо от того, есть там записи или нет.
  *
  * createPagination({ onPrev, onNext, onRemoveFilter }) → Element
  * update(el, { pageMeta, activeFilters })
@@ -9,13 +13,14 @@
 
 import store from '../store.js';
 import { cloneTemplate } from '../utils/dom.js';
+import { formatDayKey } from '../utils/format.js';
 
 /**
  * Создаёт DOM-элемент блока пагинации.
  * @param {{
  *   onPrev: () => void,
  *   onNext: () => void,
- *   onRemoveFilter: (key: 'tag'|'author'|'since'|'until') => void,
+ *   onRemoveFilter: (key: 'tag'|'author'|'since'|'until'|'day') => void,
  * }} opts
  * @returns {HTMLElement}
  */
@@ -26,7 +31,7 @@ export function createPagination({ onPrev, onNext, onRemoveFilter }) {
   const controls = document.createElement('div');
   controls.className = 'pagination-controls';
 
-  // Кнопка «Предыдущие»
+  // Кнопка «Предыдущие» / «Предыдущий день»
   const btnPrev = document.createElement('button');
   btnPrev.className   = 'btn';
   btnPrev.textContent = '← Предыдущие';
@@ -36,7 +41,7 @@ export function createPagination({ onPrev, onNext, onRemoveFilter }) {
   const filtersDisplay = document.createElement('div');
   filtersDisplay.className = 'feed-filters-display';
 
-  // Кнопка «Следующие»
+  // Кнопка «Следующие» / «Следующий день»
   const btnNext = document.createElement('button');
   btnNext.className   = 'btn';
   btnNext.textContent = 'Следующие →';
@@ -48,8 +53,8 @@ export function createPagination({ onPrev, onNext, onRemoveFilter }) {
   container.appendChild(controls);
 
   // Запоминаем ссылки для update()
-  container._btnPrev       = btnPrev;
-  container._btnNext       = btnNext;
+  container._btnPrev        = btnPrev;
+  container._btnNext        = btnNext;
   container._filtersDisplay = filtersDisplay;
   container._onRemoveFilter = onRemoveFilter;
 
@@ -75,23 +80,37 @@ export function updatePagination(el, { pageMeta, activeFilters }) {
 
   if (!btnPrev || !btnNext) return;
 
-  // Кнопки
-  if (pageMeta?.prevUntil) {
-    btnPrev.style.visibility = 'visible';
-  } else {
-    btnPrev.style.visibility = 'hidden';
-  }
+  const dayMode = !!activeFilters?.day;
 
-  if (pageMeta?.nextSince) {
+  if (dayMode) {
+    // Режим календарного дня: перелистывание всегда доступно и ведёт
+    // на соседний день независимо от наличия записей в этот день.
+    btnPrev.textContent      = '← Предыдущий день';
+    btnNext.textContent      = 'Следующий день →';
+    btnPrev.style.visibility = 'visible';
     btnNext.style.visibility = 'visible';
   } else {
-    btnNext.style.visibility = 'hidden';
+    btnPrev.textContent = '← Предыдущие';
+    btnNext.textContent = 'Следующие →';
+
+    if (pageMeta?.prevUntil) {
+      btnPrev.style.visibility = 'visible';
+    } else {
+      btnPrev.style.visibility = 'hidden';
+    }
+
+    if (pageMeta?.nextSince) {
+      btnNext.style.visibility = 'visible';
+    } else {
+      btnNext.style.visibility = 'hidden';
+    }
   }
 
   // Активные фильтры
   filtersDisplay.innerHTML = '';
 
   const labels = {
+    day:    (v) => `День: ${formatDayKey(v)}`,
     tag:    (v) => `Тег: ${v.startsWith('#') ? v.slice(1) : v}`,
     author: (v) => `Автор: ${v}`,
     since:  (v) => `С: ${v}`,
