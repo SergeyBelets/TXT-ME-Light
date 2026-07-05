@@ -51,8 +51,8 @@ export function mount(container, params) {
   store.set('activeFilters', filters);
 
   // Пагинация
-  const paginationTop = createPagination({ onPrev, onNext, onRemoveFilter });
-  const paginationBot = createPagination({ onPrev, onNext, onRemoveFilter });
+  const paginationTop = createPagination({ onPrev, onNext, onRemoveFilter, onHome, position: 'top' });
+  const paginationBot = createPagination({ onPrev, onNext, onRemoveFilter, onHome, position: 'bottom' });
   feedEl.appendChild(paginationTop);
 
   const listEl = document.createElement('div');
@@ -141,6 +141,18 @@ export function mount(container, params) {
     if (key === 'author') af._authors = [];
     store.set('activeFilters', af);
     _load(af);
+  }
+
+  // «На главную» — полный сброс (тег/автор/день/курсоры пагинации) и
+  // возврат к первой странице общей ленты. Как и остальные переходы
+  // внутри этого view, не дёргает роутер — просто тихо переписывает URL,
+  // чтобы не было лишнего перемонтирования всей ленты.
+  function onHome() {
+    const af = { tag: null, author: null, day: null, since: null, until: null, _tags: [], _authors: [] };
+    store.set('activeFilters', af);
+    history.replaceState(null, '', '#/');
+    _load(af);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   return () => unsubs.forEach(u => u());

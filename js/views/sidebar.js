@@ -17,22 +17,88 @@ import { clearElement } from '../utils/dom.js';
 
 // ── Постоянный элемент сайдбара ───────────────────────────────────────
 // Создаётся один раз, переставляется в нужный slot при каждом рендере layout.
+//
+// getSidebarEl() отдаёт наружу не сам <aside>, а обёртку .sidebar-mobile-bar
+// (backdrop + кнопка ☰ + aside.sidebar). На десктопе обёртка невидима для
+// раскладки (display: contents в layout.css) — сетка ведёт себя так же,
+// как раньше. На мобильных обёртка становится липким тоггл-баром, а
+// aside.sidebar превращается в выпадающее меню под ним (position: absolute,
+// containing block — сама обёртка). Это даёт «верхнее выпадающее меню»,
+// как в React-версии, вместо блока, раздвигающего ленту.
 
-let _sidebarEl = null;
+let _sidebarEl   = null; // <aside class="sidebar"> — сюда рендерится контент
+let _wrapperEl   = null; // .sidebar-mobile-bar — то, что вставляется в layout
+let _expandBtn   = null;
+let _backdropEl  = null;
 let _initialized = false;
-let _calendarEl = null;
+let _calendarEl  = null;
+
+function _buildWrapper() {
+  if (_wrapperEl) return _wrapperEl;
+
+  _sidebarEl = document.createElement('aside');
+  _sidebarEl.id        = 'sidebar-root';
+  _sidebarEl.className = 'sidebar';
+
+  _backdropEl = document.createElement('div');
+  _backdropEl.className = 'sidebar-backdrop';
+  _backdropEl.addEventListener('click', _closeMobileMenu);
+
+  _expandBtn = document.createElement('button');
+  _expandBtn.className    = 'expand-toggle';
+  _expandBtn.textContent  = '☰ Фильтры и навигация';
+  _expandBtn.setAttribute('aria-expanded', 'false');
+  _expandBtn.addEventListener('click', _openMobileMenu);
+
+  _wrapperEl = document.createElement('div');
+  _wrapperEl.className = 'sidebar-mobile-bar';
+  _wrapperEl.appendChild(_backdropEl);
+  _wrapperEl.appendChild(_expandBtn);
+  _wrapperEl.appendChild(_sidebarEl);
+
+  // Закрывать меню при обычной навигации (переход по ссылке со сменой hash).
+  window.addEventListener('hashchange', _closeMobileMenu);
+
+  return _wrapperEl;
+}
 
 /**
- * Получить (или создать) постоянный DOM-элемент сайдбара.
+ * Получить (или создать) обёртку сайдбара для вставки в layout.
  * @returns {HTMLElement}
  */
 export function getSidebarEl() {
-  if (!_sidebarEl) {
-    _sidebarEl = document.createElement('aside');
-    _sidebarEl.id        = 'sidebar-root';
-    _sidebarEl.className = 'sidebar';
+  _buildWrapper();
+  return _wrapperEl;
+}
+
+/** Открыть выпадающее меню (мобильные). */
+function _openMobileMenu() {
+  _sidebarEl.classList.add('expanded');
+  _backdropEl.classList.add('visible');
+  // Не display:none — иначе обёртка (containing block) потеряет высоту
+  // и меню "прыгнет" наверх. Просто прячем визуально.
+  _expandBtn.style.visibility = 'hidden';
+  _expandBtn.setAttribute('aria-expanded', 'true');
+
+  let collapseBtn = _sidebarEl.querySelector('.collapse-toggle');
+  if (!collapseBtn) {
+    collapseBtn = document.createElement('button');
+    collapseBtn.className   = 'collapse-toggle';
+    collapseBtn.textContent = '✕ Свернуть';
+    collapseBtn.addEventListener('click', _closeMobileMenu);
+    _sidebarEl.insertBefore(collapseBtn, _sidebarEl.firstChild);
   }
-  return _sidebarEl;
+}
+
+/** Закрыть выпадающее меню (мобильные). */
+function _closeMobileMenu() {
+  if (!_sidebarEl) return;
+  _sidebarEl.classList.remove('expanded');
+  _backdropEl?.classList.remove('visible');
+  if (_expandBtn) {
+    _expandBtn.style.visibility = '';
+    _expandBtn.setAttribute('aria-expanded', 'false');
+  }
 }
 
 /**
@@ -74,8 +140,8 @@ export function mountSidebar() {
   if (_initialized) return;
   _initialized = true;
 
-  const sidebar = getSidebarEl();
-  _init(sidebar);
+  getSidebarEl(); // строит обёртку (aside/toggle/backdrop)
+  _init(_sidebarEl);
 }
 
 // ── Инициализация ─────────────────────────────────────────────────────
@@ -85,17 +151,24 @@ function _init(sidebar) {
 
   store.on('change:allTags',       () => _renderFilters(sidebar));
   store.on('change:allAuthors',    () => _renderFilters(sidebar));
-  store.on('change:activeFilters', () => _renderFilters(sidebar));
+  store.on('change:activeFilters', () => {
+    _renderFilters(sidebar);
+    _closeMobileMenu(); // выбор фильтра/дня — считаем меню использованным
+  });
 
   document.addEventListener('auth:changed', () => _render(sidebar));
 
   _render(sidebar);
-  _mountToggle(sidebar);
 }
 
 // ── Полный рендер ─────────────────────────────────────────────────────
 
 function _render(sidebar) {
+  // Полный ре-рендер (например, после логина/логаута) стирает содержимое
+  // sidebar, включая кнопку "✕ Свернуть" — проще закрыть меню заранее,
+  // чем чинить рассинхронизированное открытое состояние.
+  _closeMobileMenu();
+
   clearElement(sidebar);
 
   const clubBlock = document.createElement('div');
@@ -107,9 +180,6 @@ function _render(sidebar) {
 
   // Календарь — всегда в самом низу сайдбара
   sidebar.appendChild(_getCalendarEl());
-
-  // Переставить кнопку тоггла (она снаружи sidebar)
-  _remountToggle(sidebar);
 }
 
 // ── Секция пользователя ───────────────────────────────────────────────
@@ -329,43 +399,4 @@ function _renderFilters(sidebar) {
   }
 }
 
-// ── Мобильный тоггл ───────────────────────────────────────────────────
 
-let _expandBtn = null;
-
-function _mountToggle(sidebar) {
-  _expandBtn = document.createElement('button');
-  _expandBtn.className   = 'expand-toggle';
-  _expandBtn.textContent = '☰ Фильтры и навигация';
-
-  if (sidebar.parentNode) {
-    sidebar.parentNode.insertBefore(_expandBtn, sidebar);
-  }
-
-  _expandBtn.addEventListener('click', () => {
-    sidebar.classList.add('expanded');
-    _expandBtn.style.display = 'none';
-
-    let collapseBtn = sidebar.querySelector('.collapse-toggle');
-    if (!collapseBtn) {
-      collapseBtn = document.createElement('button');
-      collapseBtn.className   = 'collapse-toggle';
-      collapseBtn.textContent = '✕ Свернуть';
-      sidebar.insertBefore(collapseBtn, sidebar.firstChild);
-      collapseBtn.addEventListener('click', () => {
-        sidebar.classList.remove('expanded');
-        _expandBtn.style.display = '';
-      });
-    }
-  });
-}
-
-/**
- * После полного ре-рендера sidebar (при auth:changed) — переставить expand-кнопку.
- */
-function _remountToggle(sidebar) {
-  if (!_expandBtn) return;
-  if (sidebar.parentNode && _expandBtn.parentNode !== sidebar.parentNode) {
-    sidebar.parentNode.insertBefore(_expandBtn, sidebar);
-  }
-}

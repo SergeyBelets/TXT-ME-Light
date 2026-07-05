@@ -15,6 +15,22 @@ import { showToast } from '../components/toast.js';
 import { clearElement } from '../utils/dom.js';
 import { cleanTag } from '../utils/format.js';
 
+// ── Уровни видимости (зеркало серверной валидации в CMS-Posts-Create/Update) ──
+const VISIBILITY_LEVELS = [
+  { value: 0,  label: 'Всем (публично)' },
+  { value: 10, label: 'Комментаторам и выше' },
+  { value: 20, label: 'Авторам и выше' },
+  { value: 30, label: 'Смотрителям и выше' },
+  { value: 40, label: 'Только Настоятелю' },
+];
+
+const ROLE_MAX_VISIBILITY = {
+  KOMMENTATOR: 10,
+  AVTOR:       20,
+  SMOTRITEL:   30,
+  NASTOIATEL:  40,
+};
+
 export function mount(container, { mode = 'create', postId = null }) {
   clearElement(container);
 
@@ -106,6 +122,35 @@ function _buildForm(card) {
   tagsGroup.appendChild(tagsInput);
   card.appendChild(tagsGroup);
 
+  // Видимость записи
+  const visibilityGroup = document.createElement('div');
+  visibilityGroup.className = 'form-group';
+  const visibilityLabel = document.createElement('label');
+  visibilityLabel.textContent = 'Кто видит запись';
+  const visibilitySelect = document.createElement('select');
+  visibilitySelect.style.cssText = 'padding:0.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--input-background);min-height:44px;width:100%;font-family:inherit;font-size:0.875rem';
+
+  const myRole    = auth.getRole();
+  const maxAllowed = ROLE_MAX_VISIBILITY[myRole] ?? 0;
+  for (const level of VISIBILITY_LEVELS) {
+    // Бэкенд всё равно отклонит уровень выше разрешённого для роли (403) —
+    // не показываем то, что заведомо не пройдёт валидацию.
+    if (level.value > maxAllowed) continue;
+    const opt = document.createElement('option');
+    opt.value = String(level.value);
+    opt.textContent = level.label;
+    visibilitySelect.appendChild(opt);
+  }
+
+  const visibilityHint = document.createElement('div');
+  visibilityHint.style.cssText = 'font-size:0.8rem;color:var(--muted-foreground);margin-top:0.35rem';
+  visibilityHint.textContent = 'Автор всегда видит свою запись независимо от уровня.';
+
+  visibilityGroup.appendChild(visibilityLabel);
+  visibilityGroup.appendChild(visibilitySelect);
+  visibilityGroup.appendChild(visibilityHint);
+  card.appendChild(visibilityGroup);
+
   // Аватар поста
   let postAvatarId = null;
   const avatarGroup = document.createElement('div');
@@ -161,6 +206,7 @@ function _buildForm(card) {
       tags:        rawTags,
       media:       mediaSection.getMedia(),
       postAvatarId: postAvatarId || null,
+      visibilityLevel: Number(visibilitySelect.value),
     };
   }
 
@@ -178,6 +224,21 @@ function _buildForm(card) {
     }
 
     mediaSection.setMedia(post.media ?? []);
+
+    // Уровень видимости: если у поста уже стоит уровень выше того, что доступен
+    // роли редактирующего (например, Смотритель открыл на правку чужой пост
+    // уровня «Только Настоятелю»), не даём select молча съехать на 0 —
+    // добавляем текущий уровень отдельным пунктом, чтобы «Сохранить без
+    // изменений» не понизило видимость незаметно для редактирующего.
+    const currentVisibility = post.visibilityLevel ?? 0;
+    if (!visibilitySelect.querySelector(`option[value="${currentVisibility}"]`)) {
+      const known = VISIBILITY_LEVELS.find(l => l.value === currentVisibility);
+      const extraOpt = document.createElement('option');
+      extraOpt.value = String(currentVisibility);
+      extraOpt.textContent = (known ? known.label : `Уровень ${currentVisibility}`) + ' (текущий, недоступно для вашей роли)';
+      visibilitySelect.insertBefore(extraOpt, visibilitySelect.firstChild);
+    }
+    visibilitySelect.value = String(currentVisibility);
 
     // Меняем текст кнопки
     submitBtn.textContent = 'Сохранить';

@@ -498,7 +498,15 @@
 .pagination-container {
   padding: 1rem 0;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pagination-day-label {
+  font-weight: var(--font-weight-medium);
+  font-size: 1.05rem;
+  text-align: center;
 }
 
 .pagination-controls {
