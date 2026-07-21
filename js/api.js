@@ -12,6 +12,30 @@ import { BASE_URL } from './config.js';
 let _on401 = null;
 export function set401Handler(fn) { _on401 = fn; }
 
+// Очередь ожидающих повтора после реавторизации
+let _reauthPromise = null;
+
+/**
+ * Ждём реавторизации. Если уже ждём — присоединяемся к той же очереди.
+ * Resolve вызывается из app.js после успешного логина через auth:reauth-done.
+ */
+function _waitForReauth() {
+  if (!_reauthPromise) {
+    _reauthPromise = new Promise((resolve, reject) => {
+      function onDone()   { cleanup(); resolve(); }
+      function onCancel() { cleanup(); reject(Object.assign(new Error('Авторизация отменена'), { status: 401, noRetry: true })); }
+      function cleanup()  {
+        _reauthPromise = null;
+        document.removeEventListener('auth:reauth-done',   onDone);
+        document.removeEventListener('auth:reauth-cancel', onCancel);
+      }
+      document.addEventListener('auth:reauth-done',   onDone,   { once: true });
+      document.addEventListener('auth:reauth-cancel', onCancel, { once: true });
+    });
+  }
+  return _reauthPromise;
+}
+
 // ── Базовый запрос ────────────────────────────────────────────────────
 
 /**
@@ -21,7 +45,7 @@ export function set401Handler(fn) { _on401 = fn; }
  * @param {boolean} [requiresAuth=false]
  * @returns {Promise<any>}
  */
-async function request(method, path, body = null, requiresAuth = false) {
+async function request(method, path, body = null, requiresAuth = false, retries = 2) {
   const headers = { 'Content-Type': 'application/json' };
 
   if (requiresAuth) {
@@ -32,37 +56,53 @@ async function request(method, path, body = null, requiresAuth = false) {
   const init = { method, headers };
   if (body !== null) init.body = JSON.stringify(body);
 
-  let response;
   try {
-    response = await fetch(BASE_URL + path, init);
-  } catch (err) {
-    // Сетевая ошибка (offline, DNS и т.п.)
-    throw Object.assign(new Error('Сетевая ошибка. Проверьте подключение.'), { status: 0 });
-  }
+    const response = await fetch(BASE_URL + path, init);
 
-  if (response.status === 401) {
-    storage.clear();
-    if (_on401) _on401();
-    const err = Object.assign(new Error('Не авторизован'), { status: 401 });
+    // Cold start Lambda / таймаут API Gateway
+    if (response.status === 504 && retries > 0) {
+      console.warn(`[api] 504 Gateway Timeout. Ретрай... Осталось: ${retries}`);
+      await new Promise(r => setTimeout(r, 500 + Math.random() * 1000));
+      return request(method, path, body, requiresAuth, retries - 1);
+    }
+
+    if (response.status === 401) {
+      if (_on401) _on401();
+      // Ждём пока пользователь войдёт заново, потом повторяем запрос
+      try {
+        await _waitForReauth();
+        return request(method, path, body, requiresAuth, 0); // повтор без доп. ретраев
+      } catch (reauthErr) {
+        storage.clear();
+        throw reauthErr;
+      }
+    }
+
+    if (response.status === 204) return null;
+
+    let data;
+    try { data = await response.json(); } catch { data = null; }
+
+    if (!response.ok) {
+      const message = data?.message ?? data?.error ?? `Ошибка ${response.status}`;
+      throw Object.assign(new Error(message), { status: response.status, noRetry: true });
+    }
+
+    return data;
+
+  } catch (err) {
+    // Не ретраим намеренные ошибки (401, 4xx и т.п.)
+    if (err.noRetry) throw err;
+
+    // Сетевой сбой (интернет моргнул, ПВО) — ретрай
+    if (retries > 0 && (err.name === 'TypeError' || err.message?.includes('fetch'))) {
+      console.warn(`[api] Сетевой сбой. Ретрай... Осталось: ${retries}`);
+      await new Promise(r => setTimeout(r, 500 + Math.random() * 1000));
+      return request(method, path, body, requiresAuth, retries - 1);
+    }
+
     throw err;
   }
-
-  // Пустые ответы (204 No Content)
-  if (response.status === 204) return null;
-
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    data = null;
-  }
-
-  if (!response.ok) {
-    const message = data?.message ?? data?.error ?? `Ошибка ${response.status}`;
-    throw Object.assign(new Error(message), { status: response.status, data });
-  }
-
-  return data;
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────

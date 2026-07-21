@@ -15,6 +15,22 @@ import { showToast } from '../components/toast.js';
 import { clearElement } from '../utils/dom.js';
 import { cleanTag } from '../utils/format.js';
 
+// ── Уровни видимости (зеркало серверной валидации в CMS-Posts-Create/Update) ──
+const VISIBILITY_LEVELS = [
+  { value: 0,  label: 'Всем (публично)' },
+  { value: 10, label: 'Комментаторам и выше' },
+  { value: 20, label: 'Авторам и выше' },
+  { value: 30, label: 'Смотрителям и выше' },
+  { value: 40, label: 'Только Настоятелю' },
+];
+
+const ROLE_MAX_VISIBILITY = {
+  KOMMENTATOR: 10,
+  AVTOR:       20,
+  SMOTRITEL:   30,
+  NASTOIATEL:  40,
+};
+
 export function mount(container, { mode = 'create', postId = null }) {
   clearElement(container);
 
@@ -52,7 +68,7 @@ export function mount(container, { mode = 'create', postId = null }) {
     try {
       if (mode === 'create') {
         const post = await postsModel.create(values);
-        showToast('Запись опубликована', 'success');
+        console.log('[editor] create result:', JSON.stringify(post).slice(0, 200));
         router.push(`/posts/${post.postId}`);
       } else {
         await postsModel.update(postId, values);
@@ -98,88 +114,42 @@ function _buildForm(card) {
   const tagsGroup = document.createElement('div');
   tagsGroup.className = 'form-group';
   const tagsLabel = document.createElement('label');
-  tagsLabel.textContent = 'Теги (через пробел или запятую, максимум 10)';
+  tagsLabel.textContent = 'Теги (через запятую, максимум 10)';
   const tagsInput = document.createElement('input');
   tagsInput.type        = 'text';
-  tagsInput.placeholder = 'программирование проза стихи';
+  tagsInput.placeholder = 'программирование, проза, блиц-30';
   tagsGroup.appendChild(tagsLabel);
   tagsGroup.appendChild(tagsInput);
   card.appendChild(tagsGroup);
 
-  // Уровень видимости
+  // Видимость записи
   const visibilityGroup = document.createElement('div');
   visibilityGroup.className = 'form-group';
   const visibilityLabel = document.createElement('label');
-  visibilityLabel.textContent = 'Уровень видимости';
+  visibilityLabel.textContent = 'Кто видит запись';
   const visibilitySelect = document.createElement('select');
-  visibilitySelect.className = 'form-control';
-  visibilitySelect.style.cssText = 'width:100%;padding:0.75rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--input-background);color:var(--foreground)';
-  
-  const role = auth.getRole();
-  const options = [
-    { value: 0, label: 'Всем' },
-    { value: 10, label: 'Комментаторам', minRole: 'KOMMENTATOR' },
-    { value: 20, label: 'Авторам', minRole: 'AVTOR' },
-    { value: 30, label: 'Смотрителям', minRole: 'SMOTRITEL' },
-    { value: 40, label: 'Настоятелям', minRole: 'NASTOIATEL' }
-  ];
+  visibilitySelect.style.cssText = 'padding:0.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--input-background);min-height:44px;width:100%;font-family:inherit;font-size:0.875rem';
 
-  const roleRank = {
-    'ANONYM': 0,
-    'KOMMENTATOR': 10,
-    'AVTOR': 20,
-    'SMOTRITEL': 30,
-    'NASTOIATEL': 40
-  };
+  const myRole    = auth.getRole();
+  const maxAllowed = ROLE_MAX_VISIBILITY[myRole] ?? 0;
+  for (const level of VISIBILITY_LEVELS) {
+    // Бэкенд всё равно отклонит уровень выше разрешённого для роли (403) —
+    // не показываем то, что заведомо не пройдёт валидацию.
+    if (level.value > maxAllowed) continue;
+    const opt = document.createElement('option');
+    opt.value = String(level.value);
+    opt.textContent = level.label;
+    visibilitySelect.appendChild(opt);
+  }
 
-  const currentRank = roleRank[role] || 0;
-
-  options.forEach(opt => {
-    const requiredRank = roleRank[opt.minRole] || 0;
-    if (currentRank >= requiredRank) {
-      const el = document.createElement('option');
-      el.value = opt.value;
-      el.textContent = opt.label;
-      visibilitySelect.appendChild(el);
-    }
-  });
-
-  const visibilityHelp = document.createElement('p');
-  visibilityHelp.style.cssText = 'font-size:0.75rem;color:var(--muted-foreground);margin-top:0.25rem';
-  visibilityHelp.textContent = 'Кто сможет увидеть этот пост.';
+  const visibilityHint = document.createElement('div');
+  visibilityHint.style.cssText = 'font-size:0.8rem;color:var(--muted-foreground);margin-top:0.35rem';
+  visibilityHint.textContent = 'Автор всегда видит свою запись независимо от уровня.';
 
   visibilityGroup.appendChild(visibilityLabel);
   visibilityGroup.appendChild(visibilitySelect);
-  visibilityGroup.appendChild(visibilityHelp);
+  visibilityGroup.appendChild(visibilityHint);
   card.appendChild(visibilityGroup);
-
-  // Могут комментировать
-  const commentGroup = document.createElement('div');
-  commentGroup.className = 'form-group';
-  const commentLabel = document.createElement('label');
-  commentLabel.textContent = 'Могут комментировать';
-  const commentSelect = document.createElement('select');
-  commentSelect.className = 'form-control';
-  commentSelect.style.cssText = 'width:100%;padding:0.75rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--input-background);color:var(--foreground)';
-
-  const commentOptions = [
-    { value: 0, label: 'Все' },
-    { value: 20, label: 'Авторы', minRole: 'AVTOR' }
-  ];
-
-  commentOptions.forEach(opt => {
-    const requiredRank = roleRank[opt.minRole] || 0;
-    if (currentRank >= requiredRank) {
-      const el = document.createElement('option');
-      el.value = opt.value;
-      el.textContent = opt.label;
-      commentSelect.appendChild(el);
-    }
-  });
-
-  commentGroup.appendChild(commentLabel);
-  commentGroup.appendChild(commentSelect);
-  card.appendChild(commentGroup);
 
   // Аватар поста
   let postAvatarId = null;
@@ -224,7 +194,7 @@ function _buildForm(card) {
   // ── getValues ──
   function getValues() {
     const rawTags = tagsInput.value
-      .split(/[\s,]+/)
+      .split(/,+/)
       .map(t => t.trim())
       .filter(Boolean)
       .slice(0, 10)
@@ -237,7 +207,6 @@ function _buildForm(card) {
       media:       mediaSection.getMedia(),
       postAvatarId: postAvatarId || null,
       visibilityLevel: Number(visibilitySelect.value),
-      commentLevel: Number(commentSelect.value),
     };
   }
 
@@ -246,7 +215,7 @@ function _buildForm(card) {
     titleInput.value = post.title ?? '';
     editorEl.setContent(post.content ?? '');
 
-    const tagStr = (post.tags ?? []).map(cleanTag).join(' ');
+    const tagStr = (post.tags ?? []).map(cleanTag).join(', ');
     tagsInput.value = tagStr;
 
     if (post.postAvatarId) {
@@ -262,6 +231,21 @@ function _buildForm(card) {
     }
 
     mediaSection.setMedia(post.media ?? []);
+
+    // Уровень видимости: если у поста уже стоит уровень выше того, что доступен
+    // роли редактирующего (например, Смотритель открыл на правку чужой пост
+    // уровня «Только Настоятелю»), не даём select молча съехать на 0 —
+    // добавляем текущий уровень отдельным пунктом, чтобы «Сохранить без
+    // изменений» не понизило видимость незаметно для редактирующего.
+    const currentVisibility = post.visibilityLevel ?? 0;
+    if (!visibilitySelect.querySelector(`option[value="${currentVisibility}"]`)) {
+      const known = VISIBILITY_LEVELS.find(l => l.value === currentVisibility);
+      const extraOpt = document.createElement('option');
+      extraOpt.value = String(currentVisibility);
+      extraOpt.textContent = (known ? known.label : `Уровень ${currentVisibility}`) + ' (текущий, недоступно для вашей роли)';
+      visibilitySelect.insertBefore(extraOpt, visibilitySelect.firstChild);
+    }
+    visibilitySelect.value = String(currentVisibility);
 
     // Меняем текст кнопки
     submitBtn.textContent = 'Сохранить';
@@ -384,10 +368,10 @@ function _buildMediaSection() {
 
   function _addMediaRow(list, item = null) {
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:0.5rem;align-items:center';
+    row.style.cssText = 'display:grid;grid-template-columns:160px 1fr auto;gap:0.5rem;align-items:center;width:100%';
 
     const typeSelect = document.createElement('select');
-    typeSelect.style.cssText = 'padding:0.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--input-background);min-height:44px';
+    typeSelect.style.cssText = 'padding:0.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--input-background);min-height:44px;width:100%';
     ['video', 'audio'].forEach(t => {
       const opt = document.createElement('option');
       opt.value = t;
@@ -398,8 +382,12 @@ function _buildMediaSection() {
 
     const urlInput = document.createElement('input');
     urlInput.type        = 'text';
+    urlInput.className   = 'media-url-input';
     urlInput.placeholder = 'URL…';
     urlInput.style.flex  = '1';
+    urlInput.style.pointerEvents = 'auto';
+    urlInput.style.userSelect = 'text';
+    urlInput.style.webkitUserSelect = 'text';
     urlInput.style.minHeight = '44px';
     if (item?.url) urlInput.value = item.url;
 

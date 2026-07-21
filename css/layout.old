@@ -44,18 +44,9 @@
 .sidebar:hover::-webkit-scrollbar-thumb { background: var(--muted-foreground); }
 .sidebar:hover::-webkit-scrollbar-thumb:hover { background: var(--foreground); }
 
-/* ── Обёртка мобильного меню (тоггл + выпадающий сайдбар) ──
-   На десктопе она "прозрачна" для раскладки: display:contents убирает
-   сам блок-обёртку, и её дети (aside.sidebar) становятся обычными
-   потомками .main-container — сетка не замечает разницы. */
-.sidebar-mobile-bar {
-  display: contents;
-}
-
-/* ── Кнопка развернуть/свернуть и подложка (только мобильные) ── */
+/* ── Кнопка развернуть/свернуть (только мобильные) ── */
 .expand-toggle,
-.collapse-toggle,
-.sidebar-backdrop {
+.collapse-toggle {
   display: none;
 }
 
@@ -96,15 +87,14 @@
     overflow-x: hidden;
   }
 
-  /* Обёртка становится настоящим блоком: липнет к верху экрана
-     (top: 0) и служит точкой отсчёта (containing block) для
-     абсолютно позиционированного сайдбара под ней. */
-  .sidebar-mobile-bar {
-    display: block;
+  .sidebar {
     order: -1;
-    position: sticky;
-    top: 0;
-    z-index: 45;
+    display: none;
+    max-width: 100%;
+  }
+
+  .sidebar.expanded {
+    display: block;
   }
 
   .expand-toggle {
@@ -121,58 +111,8 @@
     font-size: 0.875rem;
   }
 
-  /* Сайдбар на мобильных — выпадающее меню поверх ленты (как в
-     React-версии), а не блок, раздвигающий контент. top: 100%
-     ставит его сразу под кнопкой ☰, потому что .sidebar-mobile-bar
-     (position: sticky) — его containing block. */
-  .sidebar {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 41;
-    max-width: none;
-    max-height: 0;
-    overflow: hidden;
-    opacity: 0;
-    visibility: hidden;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
-    padding: 0 1rem;
-    transition: max-height 0.25s ease, opacity 0.2s ease, visibility 0.25s;
-  }
-
-  .sidebar.expanded {
-    max-height: calc(100vh - 6rem);
-    overflow-y: auto;
-    opacity: 1;
-    visibility: visible;
-    padding: 1rem;
-  }
-
-  /* Подложка — закрывает меню тапом мимо него */
-  .sidebar-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    background: rgba(3, 2, 19, 0.4);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
-
-  .sidebar-backdrop.visible {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
   .collapse-toggle {
     display: block;
-    position: sticky;
-    top: 0;
     width: 100%;
     background: var(--blue);
     color: #ffffff;

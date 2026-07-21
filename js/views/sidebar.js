@@ -1,8 +1,9 @@
-console.log('[sidebar.js] v: 2026-02-27-v9');
+console.log('[sidebar.js] v: 2026-07-04-v10');
 /**
  * views/sidebar.js — сайдбар.
  * Постоянный DOM-элемент, создаётся один раз, переставляется в layout.
  * Обновляется при изменении авторизации и фильтров.
+ * В самом низу — постоянный календарь (только vanilla-фронтенд).
  */
 
 import auth from '../auth.js';
@@ -10,26 +11,126 @@ import store from '../store.js';
 import metaModel from '../models/meta.js';
 import router from '../router.js';
 import { createAvatar } from '../components/avatar.js';
+import { createCalendar } from '../components/calendar.js';
 import { getRoleDisplay, canPost, cleanTag } from '../utils/format.js';
 import { clearElement } from '../utils/dom.js';
 
 // ── Постоянный элемент сайдбара ───────────────────────────────────────
 // Создаётся один раз, переставляется в нужный slot при каждом рендере layout.
+//
+// getSidebarEl() отдаёт наружу не сам <aside>, а обёртку .sidebar-mobile-bar
+// (backdrop + кнопка ☰ + aside.sidebar). На десктопе обёртка невидима для
+// раскладки (display: contents в layout.css) — сетка ведёт себя так же,
+// как раньше. На мобильных обёртка становится липким тоггл-баром, а
+// aside.sidebar превращается в выпадающее меню под ним (position: absolute,
+// containing block — сама обёртка). Это даёт «верхнее выпадающее меню»,
+// как в React-версии, вместо блока, раздвигающего ленту.
 
-let _sidebarEl = null;
+let _sidebarEl   = null; // <aside class="sidebar"> — сюда рендерится контент
+let _wrapperEl   = null; // .sidebar-mobile-bar — то, что вставляется в layout
+let _expandBtn   = null;
+let _backdropEl  = null;
 let _initialized = false;
+let _calendarEl  = null;
+
+function _buildWrapper() {
+  if (_wrapperEl) return _wrapperEl;
+
+  _sidebarEl = document.createElement('aside');
+  _sidebarEl.id        = 'sidebar-root';
+  _sidebarEl.className = 'sidebar';
+
+  _backdropEl = document.createElement('div');
+  _backdropEl.className = 'sidebar-backdrop';
+  _backdropEl.addEventListener('click', _closeMobileMenu);
+
+  _expandBtn = document.createElement('button');
+  _expandBtn.className    = 'expand-toggle';
+  _expandBtn.textContent  = '☰ Фильтры и навигация';
+  _expandBtn.setAttribute('aria-expanded', 'false');
+  _expandBtn.addEventListener('click', _openMobileMenu);
+
+  _wrapperEl = document.createElement('div');
+  _wrapperEl.className = 'sidebar-mobile-bar';
+  _wrapperEl.appendChild(_backdropEl);
+  _wrapperEl.appendChild(_expandBtn);
+  _wrapperEl.appendChild(_sidebarEl);
+
+  // Закрывать меню при обычной навигации (переход по ссылке со сменой hash).
+  window.addEventListener('hashchange', _closeMobileMenu);
+
+  return _wrapperEl;
+}
 
 /**
- * Получить (или создать) постоянный DOM-элемент сайдбара.
+ * Получить (или создать) обёртку сайдбара для вставки в layout.
  * @returns {HTMLElement}
  */
 export function getSidebarEl() {
-  if (!_sidebarEl) {
-    _sidebarEl = document.createElement('aside');
-    _sidebarEl.id        = 'sidebar-root';
-    _sidebarEl.className = 'sidebar';
+  _buildWrapper();
+  return _wrapperEl;
+}
+
+/** Открыть выпадающее меню (мобильные). */
+function _openMobileMenu() {
+  _sidebarEl.classList.add('expanded');
+  _backdropEl.classList.add('visible');
+  // Не display:none — иначе обёртка (containing block) потеряет высоту
+  // и меню "прыгнет" наверх. Просто прячем визуально.
+  _expandBtn.style.visibility = 'hidden';
+  _expandBtn.setAttribute('aria-expanded', 'true');
+
+  let collapseBtn = _sidebarEl.querySelector('.collapse-toggle');
+  if (!collapseBtn) {
+    collapseBtn = document.createElement('button');
+    collapseBtn.className   = 'collapse-toggle';
+    collapseBtn.textContent = '✕ Свернуть';
+    collapseBtn.addEventListener('click', _closeMobileMenu);
+    _sidebarEl.insertBefore(collapseBtn, _sidebarEl.firstChild);
   }
-  return _sidebarEl;
+}
+
+/** Закрыть выпадающее меню (мобильные). */
+function _closeMobileMenu() {
+  if (!_sidebarEl) return;
+  _sidebarEl.classList.remove('expanded');
+  _backdropEl?.classList.remove('visible');
+  if (_expandBtn) {
+    _expandBtn.style.visibility = '';
+    _expandBtn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+/**
+ * Получить (или создать) постоянный элемент календаря.
+ * Создаётся один раз, чтобы выбранные год/месяц не сбрасывались
+ * при полном перерендере сайдбара (например, при auth:changed).
+ * @returns {HTMLElement}
+ */
+function _getCalendarEl() {
+  if (!_calendarEl) {
+    _calendarEl = createCalendar({ onSelectDay: _handleDaySelect });
+  }
+  return _calendarEl;
+}
+
+/**
+ * Клик по дню в календаре — фильтр ленты по дате создания записи.
+ * Повторный клик по уже выбранному дню снимает фильтр (как и с тегами/авторами).
+ * Выбор дня — самостоятельный фильтр: сбрасывает тег/автора, чтобы
+ * пользователь всегда видел «всё за этот день», без неожиданных пустых лент.
+ * @param {string} dayKeyStr 'YYYY-MM-DD'
+ */
+function _handleDaySelect(dayKeyStr) {
+  const active = store.get('activeFilters') ?? {};
+  const isSame = active.day === dayKeyStr;
+
+  const newFilters = isSame
+    ? { tag: null, author: null, day: null, since: null, until: null, _tags: [], _authors: [] }
+    : { tag: null, author: null, day: dayKeyStr, since: null, until: null, _tags: [], _authors: [] };
+
+  store.set('activeFilters', newFilters);
+  router.replace(isSame ? '/' : '/?day=' + encodeURIComponent(dayKeyStr));
 }
 
 /**
@@ -39,8 +140,8 @@ export function mountSidebar() {
   if (_initialized) return;
   _initialized = true;
 
-  const sidebar = getSidebarEl();
-  _init(sidebar);
+  getSidebarEl(); // строит обёртку (aside/toggle/backdrop)
+  _init(_sidebarEl);
 }
 
 // ── Инициализация ─────────────────────────────────────────────────────
@@ -50,17 +151,24 @@ function _init(sidebar) {
 
   store.on('change:allTags',       () => _renderFilters(sidebar));
   store.on('change:allAuthors',    () => _renderFilters(sidebar));
-  store.on('change:activeFilters', () => _renderFilters(sidebar));
+  store.on('change:activeFilters', () => {
+    _renderFilters(sidebar);
+    _closeMobileMenu(); // выбор фильтра/дня — считаем меню использованным
+  });
 
   document.addEventListener('auth:changed', () => _render(sidebar));
 
   _render(sidebar);
-  _mountToggle(sidebar);
 }
 
 // ── Полный рендер ─────────────────────────────────────────────────────
 
 function _render(sidebar) {
+  // Полный ре-рендер (например, после логина/логаута) стирает содержимое
+  // sidebar, включая кнопку "✕ Свернуть" — проще закрыть меню заранее,
+  // чем чинить рассинхронизированное открытое состояние.
+  _closeMobileMenu();
+
   clearElement(sidebar);
 
   const clubBlock = document.createElement('div');
@@ -70,8 +178,8 @@ function _render(sidebar) {
 
   _renderFilters(sidebar);
 
-  // Переставить кнопку тоггла (она снаружи sidebar)
-  _remountToggle(sidebar);
+  // Календарь — всегда в самом низу сайдбара
+  sidebar.appendChild(_getCalendarEl());
 }
 
 // ── Секция пользователя ───────────────────────────────────────────────
@@ -221,7 +329,8 @@ function _renderFilters(sidebar) {
 
       btn.addEventListener('click', () => {
         const isActive = active.tag === tag;
-        const newFilters = { ...active, tag: isActive ? null : tag, since: null, until: null };
+        // Выбор тега — выход из режима календарного дня.
+        const newFilters = { ...active, tag: isActive ? null : tag, day: null, since: null, until: null };
         store.set('activeFilters', newFilters);
         const params = new URLSearchParams();
         if (newFilters.tag)    params.set('tag',    newFilters.tag);
@@ -253,7 +362,8 @@ function _renderFilters(sidebar) {
 
       btn.addEventListener('click', () => {
         const isActive = active.author === author;
-        const newFilters = { ...active, author: isActive ? null : author, since: null, until: null };
+        // Выбор автора — выход из режима календарного дня.
+        const newFilters = { ...active, author: isActive ? null : author, day: null, since: null, until: null };
         store.set('activeFilters', newFilters);
         const params = new URLSearchParams();
         if (newFilters.tag)    params.set('tag',    newFilters.tag);
@@ -279,46 +389,14 @@ function _renderFilters(sidebar) {
     section.appendChild(resetBtn);
   }
 
-  sidebar.appendChild(section);
-}
-
-// ── Мобильный тоггл ───────────────────────────────────────────────────
-
-let _expandBtn = null;
-
-function _mountToggle(sidebar) {
-  _expandBtn = document.createElement('button');
-  _expandBtn.className   = 'expand-toggle';
-  _expandBtn.textContent = '☰ Фильтры и навигация';
-
-  if (sidebar.parentNode) {
-    sidebar.parentNode.insertBefore(_expandBtn, sidebar);
-  }
-
-  _expandBtn.addEventListener('click', () => {
-    sidebar.classList.add('expanded');
-    _expandBtn.style.display = 'none';
-
-    let collapseBtn = sidebar.querySelector('.collapse-toggle');
-    if (!collapseBtn) {
-      collapseBtn = document.createElement('button');
-      collapseBtn.className   = 'collapse-toggle';
-      collapseBtn.textContent = '✕ Свернуть';
-      sidebar.insertBefore(collapseBtn, sidebar.firstChild);
-      collapseBtn.addEventListener('click', () => {
-        sidebar.classList.remove('expanded');
-        _expandBtn.style.display = '';
-      });
-    }
-  });
-}
-
-/**
- * После полного ре-рендера sidebar (при auth:changed) — переставить expand-кнопку.
- */
-function _remountToggle(sidebar) {
-  if (!_expandBtn) return;
-  if (sidebar.parentNode && _expandBtn.parentNode !== sidebar.parentNode) {
-    sidebar.parentNode.insertBefore(_expandBtn, sidebar);
+  // Вставляем секцию фильтров НАД календарём, а не в конец сайдбара —
+  // календарь должен всегда оставаться самым нижним блоком.
+  const calEl = sidebar.querySelector('.calendar-section');
+  if (calEl) {
+    sidebar.insertBefore(section, calEl);
+  } else {
+    sidebar.appendChild(section);
   }
 }
+
+

@@ -82,6 +82,7 @@ document.addEventListener('auth:reauth-required', () => {
             close();
             showToast('Вы снова вошли в систему', 'success');
             document.dispatchEvent(new CustomEvent('auth:changed'));
+            document.dispatchEvent(new CustomEvent('auth:reauth-done'));
           } catch (err) {
             errEl.textContent = err.message ?? 'Неверный логин или пароль';
             errEl.classList.remove('hidden');
@@ -95,6 +96,7 @@ document.addEventListener('auth:reauth-required', () => {
         onClick(close) {
           auth.clear();
           close();
+          document.dispatchEvent(new CustomEvent('auth:reauth-cancel'));
           document.dispatchEvent(new CustomEvent('auth:changed'));
           router.push('/login');
         },

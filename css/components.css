@@ -528,7 +528,15 @@
 .pagination-container {
   padding: 1rem 0;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pagination-day-label {
+  font-weight: var(--font-weight-medium);
+  font-size: 1.05rem;
+  text-align: center;
 }
 
 .pagination-controls {
@@ -1321,4 +1329,25 @@
     border-radius: var(--radius);
     justify-content: space-between;
   }
+}
+
+/* ── Медиа-строка в редакторе ── */
+.media-url-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--input-background);
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: inherit;
+  min-height: 44px;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.media-url-input:focus {
+  outline: none;
+  border-color: var(--blue);
 }
