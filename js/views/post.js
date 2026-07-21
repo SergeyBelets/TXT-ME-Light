@@ -15,7 +15,7 @@ import { createAvatarPicker } from '../components/avatar-picker.js';
 import { renderInto } from '../components/markdown.js';
 import { showToast } from '../components/toast.js';
 import { showConfirm } from '../components/modal.js';
-import { formatDate, formatRelative, getRoleDisplay, cleanTag, isAdmin } from '../utils/format.js';
+import { formatDate, formatRelative, getRoleDisplay, getVisibilityLabel, cleanTag, isAdmin } from '../utils/format.js';
 import { clearElement } from '../utils/dom.js';
 import { postsAPI } from '../api.js';
 
@@ -62,6 +62,32 @@ export function mount(container, { postId }) {
   }
 
   return () => unsubs.forEach(u => u());
+}
+
+function _canUserComment(post) {
+  if (!post) return false;
+  const commentLevel = post.commentLevel || 0;
+  if (commentLevel === 0) return true; // всем можно (если залогинены, но это проверяется в форме)
+
+  if (!auth.isLoggedIn()) return false;
+
+  const myUsername = auth.getUsername();
+  const myUserId = auth.getUserId();
+  const myRole = auth.getRole();
+
+  // Автор поста может всегда
+  if (post.username === myUsername || post.userId === myUserId) return true;
+
+  const roleRank = {
+    'ANONYM': 0,
+    'KOMMENTATOR': 10,
+    'AVTOR': 20,
+    'SMOTRITEL': 30,
+    'NASTOIATEL': 40
+  };
+
+  const userRank = roleRank[myRole] || 0;
+  return userRank >= commentLevel;
 }
 
 // ── Рендеринг поста ───────────────────────────────────────────────────
@@ -135,6 +161,14 @@ function _renderPost(wrapper, postId) {
   meta.appendChild(authorSpan);
   meta.appendChild(roleSpan);
   meta.appendChild(dateSpan);
+
+  if (post.visibilityLevel && post.visibilityLevel > 0) {
+    const badge = document.createElement('span');
+    badge.className = 'visibility-badge';
+    badge.textContent = getVisibilityLabel(post.visibilityLevel);
+    meta.appendChild(badge);
+  }
+
   headerRight.appendChild(titleEl);
   headerRight.appendChild(meta);
   header.appendChild(avatarEl);
@@ -304,6 +338,9 @@ function _renderCommentForm(wrapper, postId) {
   let formSection = wrapper.querySelector('#comment-form');
   if (formSection) return; // уже есть
 
+  const post = store.get('currentPost');
+  const canComment = _canUserComment(post);
+
   formSection = document.createElement('div');
   formSection.id        = 'comment-form';
   formSection.className = 'comment-form';
@@ -315,6 +352,15 @@ function _renderCommentForm(wrapper, postId) {
   if (!auth.isLoggedIn()) {
     const msg = document.createElement('p');
     msg.innerHTML = '<a href="#/login">Войдите</a>, чтобы оставить комментарий.';
+    formSection.appendChild(msg);
+    wrapper.appendChild(formSection);
+    return;
+  }
+
+  if (!canComment) {
+    const msg = document.createElement('p');
+    msg.style.color = 'var(--muted-foreground)';
+    msg.textContent = 'Комментирование этой записи ограничено автором.';
     formSection.appendChild(msg);
     wrapper.appendChild(formSection);
     return;
@@ -480,7 +526,7 @@ function _makeComment(comment, allComments, postId, depth, postAuthorUsername = 
   if (!canEdit)   el.querySelector('[data-slot="edit-btn"]')?.remove();
   if (!canDelete) el.querySelector('[data-action="delete"]')?.remove();
 
-  if (!auth.isLoggedIn()) {
+  if (!auth.isLoggedIn() || !_canUserComment(store.get('currentPost'))) {
     el.querySelector('[data-action="reply"]')?.remove();
   }
 

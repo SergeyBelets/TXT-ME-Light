@@ -223,6 +223,13 @@ function _buildForm(card) {
       picker.setAvatarId(post.postAvatarId);
     }
 
+    if (post.visibilityLevel !== undefined) {
+      visibilitySelect.value = post.visibilityLevel;
+    }
+    if (post.commentLevel !== undefined) {
+      commentSelect.value = String(post.commentLevel);
+    }
+
     mediaSection.setMedia(post.media ?? []);
 
     // Уровень видимости: если у поста уже стоит уровень выше того, что доступен
